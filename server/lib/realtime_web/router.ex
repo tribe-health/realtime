@@ -20,7 +20,11 @@ defmodule RealtimeWeb.Router do
   end
 
   # Other scopes may use custom stacks.
-  # scope "/api", RealtimeWeb do
-  #   pipe_through :api
-  # end
+  scope "/api", RealtimeWeb do
+    pipe_through :api
+
+    resources "/workflows", WorkflowController do
+      resources "/executions", ExecutionController, only: [:index]
+    end
+  end
 end

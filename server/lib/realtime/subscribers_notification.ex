@@ -22,6 +22,7 @@ defmodule Realtime.SubscribersNotification do
   def handle_call({:notify, txn}, _from, nil) do
     notify_subscribers(txn)
     notify_connectors(txn)
+    notify_workflows_manager(txn)
     {:reply, :ok, nil}
   end
 
@@ -143,5 +144,9 @@ defmodule Realtime.SubscribersNotification do
 
   defp notify_connectors(txn) do
     Realtime.Connectors.notify(txn)
+  end
+
+  defp notify_workflows_manager(txn) do
+    Realtime.Workflows.Manager.notify(txn)
   end
 end

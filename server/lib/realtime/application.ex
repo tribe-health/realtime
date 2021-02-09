@@ -53,6 +53,7 @@ defmodule Realtime.Application do
 
     # List all child processes to be supervised
     children = [
+      Realtime.Repo,
       # Start the endpoint when the application starts
       RealtimeWeb.Endpoint,
       {
@@ -84,7 +85,8 @@ defmodule Realtime.Application do
         Realtime.Connectors,
         config: nil
       },
-      Realtime.WebhookConnector
+      Realtime.WebhookConnector,
+      Realtime.Workflows.Supervisor,
     ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html

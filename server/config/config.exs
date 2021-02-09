@@ -63,7 +63,8 @@ config :realtime,
   configuration_file: configuration_file,
   secure_channels: secure_channels,
   jwt_secret: jwt_secret,
-  jwt_claim_validators: jwt_claim_validators
+  jwt_claim_validators: jwt_claim_validators,
+  ecto_repos: [Realtime.Repo]
 
 # Configures the endpoint
 config :realtime, RealtimeWeb.Endpoint,
@@ -71,6 +72,13 @@ config :realtime, RealtimeWeb.Endpoint,
   render_errors: [view: RealtimeWeb.ErrorView, accepts: ~w(html json)],
   pubsub_server: Realtime.PubSub,
   secret_key_base: session_secret_key_base
+
+config :realtime, Realtime.Repo,
+  hostname: db_host,
+  port: db_port,
+  database: db_name,
+  username: db_user,
+  password: db_password
 
 # Configures Elixir's Logger
 config :logger, :console,

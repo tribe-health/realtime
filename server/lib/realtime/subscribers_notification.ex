@@ -23,6 +23,7 @@ defmodule Realtime.SubscribersNotification do
     notify_subscribers(txn)
     notify_connectors(txn)
     notify_workflows_manager(txn)
+    notify_workflows_trigger(txn)
     {:reply, :ok, nil}
   end
 
@@ -148,5 +149,9 @@ defmodule Realtime.SubscribersNotification do
 
   defp notify_workflows_manager(txn) do
     Realtime.Workflows.Manager.notify(txn)
+  end
+
+  defp notify_workflows_trigger(txn) do
+    Realtime.Workflows.Trigger.notify(txn)
   end
 end

@@ -3,7 +3,8 @@ defmodule RealtimeWeb.ErrorController do
 
   require Logger
 
-  def call(conn, {:error, %Ecto.Changeset{} = _changeset}) do
+  def call(conn, {:error, %Ecto.Changeset{} = changeset}) do
+    Logger.debug("ErrorController.call(Changeset): #{inspect changeset}")
     conn
     |> put_status(:bad_request)
     |> put_view(RealtimeWeb.ErrorView)

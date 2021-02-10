@@ -8,6 +8,7 @@ defmodule Realtime.Workflows do
 
   alias Realtime.Workflows.Execution
   alias Realtime.Workflows.Workflow
+  alias Realtime.Workflows.ExecutionManager
 
   @doc """
   Returns the list of workflows.
@@ -47,6 +48,20 @@ defmodule Realtime.Workflows do
   """
   def delete_workflow(workflow) do
     Repo.delete(workflow)
+  end
+
+  def invoke_workflow(workflow, attrs \\ %{}, opts \\ []) do
+    with {:ok, execution} <- create_workflow_execution(workflow, attrs) do
+      ExecutionManager.start_workflow_execution(workflow, execution, opts)
+      {:ok, execution}
+    end
+  end
+
+  def create_workflow_execution(workflow, attrs \\ %{}) do
+    %Execution{}
+    |> Execution.changeset(attrs)
+    |> Execution.put_workflow(workflow)
+    |> Repo.insert()
   end
 
   ## Private

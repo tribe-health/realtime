@@ -3,6 +3,7 @@ defmodule Realtime.Workflows.Manager do
   require Logger
 
   alias Realtime.Adapters.Changes
+  alias Realtime.TransactionFilter
   alias Realtime.Workflows
 
   defmodule State do
@@ -27,9 +28,20 @@ defmodule Realtime.Workflows.Manager do
   @doc """
   Return a list of workflows that can be triggered by change.
   """
-  def workflows_for_change(change) do
+  def workflows_for_change(txn) do
     # No need to call GenServer, we can lookup the table directly
-    []
+    :ets.foldl(
+      fn ({_, workflow}, acc) ->
+        event = %{event: "*", relation: workflow.trigger}
+        if TransactionFilter.matches?(event, txn) do
+          [workflow | acc]
+        else
+          acc
+        end
+      end,
+      [],
+      @table_name
+    )
   end
 
   @doc """

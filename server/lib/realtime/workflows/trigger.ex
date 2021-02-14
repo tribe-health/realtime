@@ -9,7 +9,7 @@ defmodule Realtime.Workflows.Trigger do
 
     args = %{
       arguments: txn,
-      is_persistent: false,
+      is_persistent: true,
       has_logs: false,
     }
 

@@ -69,8 +69,8 @@ defmodule Realtime.Replication do
       ) do
     reset_retry_delays(should_reset_retry)
     decoded = Realtime.Decoder.decode_message(binary_msg)
-    Logger.debug("Received binary message: #{inspect(binary_msg, limit: :infinity)}")
-    Logger.debug("Decoded message: " <> inspect(decoded, limit: :infinity))
+    #Logger.debug("Received binary message: #{inspect(binary_msg, limit: :infinity)}")
+    #Logger.debug("Decoded message: " <> inspect(decoded, limit: :infinity))
 
     {:noreply, process_message(decoded, Map.put(state, :should_reset_retry, false))}
   end
@@ -105,7 +105,7 @@ defmodule Realtime.Replication do
        when commit_lsn == current_txn_lsn do
     # To show how the updated columns look like before being returned
     # Feel free to delete after testing
-    Logger.debug("Final Update of Columns " <> inspect(state.relations, limit: :infinity))
+    #Logger.debug("Final Update of Columns " <> inspect(state.relations, limit: :infinity))
 
     notify_subscribers(%{
       state

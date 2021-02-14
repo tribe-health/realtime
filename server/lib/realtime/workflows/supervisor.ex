@@ -8,7 +8,11 @@ defmodule Realtime.Workflows.Supervisor do
   @impl true
   def init(_config) do
     children = [
-      Realtime.Workflows.Manager
+      Realtime.Workflows.Manager,
+      {
+        Task.Supervisor,
+        name: Realtime.Workflows.TransientExecutionManager
+      }
     ]
 
     Supervisor.init(children, strategy: :one_for_one)

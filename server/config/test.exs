@@ -9,6 +9,10 @@ config :realtime, RealtimeWeb.Endpoint,
   http: [port: 4002],
   server: false
 
+config :realtime, Oban,
+  queues: false,
+  plugins: false
+
 config :joken,
   current_time_adapter: RealtimeWeb.Joken.CurrentTime.Mock
 

@@ -80,6 +80,11 @@ config :realtime, Realtime.Repo,
   username: db_user,
   password: db_password
 
+config :realtime, Oban,
+  repo: Realtime.Repo,
+  plugins: [Oban.Plugins.Pruner],
+  queues: [workflow_interpreter: 10]
+
 # Configures Elixir's Logger
 config :logger, :console,
   format: "$date $time $metadata[$level] $message\n",

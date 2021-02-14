@@ -62,6 +62,10 @@ defmodule Realtime.Application do
         adapter: Phoenix.PubSub.PG2
       },
       {
+        Oban,
+        oban_config()
+      },
+      {
         Realtime.Adapters.ConnRetry,
         conn_retry_initial_delay: db_retry_initial_delay,
         conn_retry_maximum_delay: db_retry_maximum_delay,
@@ -100,5 +104,9 @@ defmodule Realtime.Application do
   def config_change(changed, _new, removed) do
     RealtimeWeb.Endpoint.config_change(changed, removed)
     :ok
+  end
+
+  def oban_config do
+    Application.get_env(:realtime, Oban)
   end
 end

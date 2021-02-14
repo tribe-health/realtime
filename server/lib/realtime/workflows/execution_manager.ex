@@ -2,16 +2,14 @@ defmodule Realtime.Workflows.ExecutionManager do
 
   require Logger
 
+  alias Realtime.Workflows.TransientExecutionManager
+  alias Realtime.Workflows.PersistentExecutionManager
+
   def start_workflow_execution(workflow, execution, opts \\ []) do
-    Logger.debug("Starting workflow #{inspect workflow} execution #{inspect execution} with options #{inspect opts}")
-    reply_to = Keyword.get(opts, :reply_to, nil)
-    Task.start_link(
-      fn () ->
-        :timer.sleep(4_000)
-        if reply_to != nil do
-          send reply_to, {:ok, %{answer: 42}}
-        end
-      end
-    )
+    if execution.is_persistent do
+      PersistentExecutionManager.start_workflow_execution(workflow, execution, opts)
+    else
+      TransientExecutionManager.start_workflow_execution(workflow, execution, opts)
+    end
   end
 end

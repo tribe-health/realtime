@@ -15,7 +15,7 @@ defmodule Realtime.Repo.Migrations.CreateWorkflows do
 
     create table(:executions, primary_key: false) do
       add :id, :uuid, primary_key: true
-      add :workflow_id, references(:workflows, type: :uuid)
+      add :workflow_id, references(:workflows, type: :uuid, on_delete: :delete_all)
       add :arguments, :map
       add :is_persistent, :boolean
       add :has_logs, :boolean

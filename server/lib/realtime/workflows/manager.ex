@@ -6,10 +6,6 @@ defmodule Realtime.Workflows.Manager do
   alias Realtime.TransactionFilter
   alias Realtime.Workflows
 
-  defmodule State do
-    defstruct [:state, :queue, :table]
-  end
-
   @table_name :workflows_manager
 
   ## Manager API
@@ -22,7 +18,7 @@ defmodule Realtime.Workflows.Manager do
   Send notification for txn to the workflow manager.
   """
   def notify(txn) do
-    GenServer.cast(__MODULE__, {:notify, txn})
+    GenServer.call(__MODULE__, {:notify, txn})
   end
 
   @doc """
@@ -59,44 +55,27 @@ defmodule Realtime.Workflows.Manager do
   @impl true
   def init(config) do
     workflows = :ets.new(@table_name, [:named_table, :protected])
-    state = %State {
-      state: :init,
-      queue: [],
-      table: workflows
-    }
 
-    Task.start_link(fn () ->
-      workflows = Workflows.list_workflows()
-      GenServer.cast(__MODULE__, {:load_workflows, workflows})
-    end)
-
-    {:ok, state}
+    {:ok, nil, {:continue, :load_workflows}}
   end
 
   @impl true
-  def handle_cast({:load_workflows, workflows}, %State{state: :init, queue: queue, table: table} = state) do
-    Enum.each(workflows, fn workflow_data ->
-      workflow = %{
-        id: workflow_data.id,
-        trigger: workflow_data.trigger,
-        definition: workflow_data.definition
-      }
-      :ets.insert(table, {workflow.id, workflow})
+  def handle_continue(:load_workflows, state) do
+    Workflows.list_workflows()
+    |> Enum.each(fn workflow_data ->
+      with %{id: id, trigger: _, definition: _} = workflow <-
+             Map.take(workflow_data, [:id, :trigger, :definition]) do
+        :ets.insert(@table_name, {id, workflow})
+      else
+        _ -> nil
+      end
     end)
-    Enum.each(queue, fn txn -> do_handle_notification(table, txn) end)
-    new_state = %State{state | state: :sync, queue: []}
-    {:noreply, new_state}
-  end
-
-  def handle_cast({:notify, txn}, %State{state: :init, queue: queue} = state) do
-    # still loading up initial data, add txn to queue
-    new_state = %State{state | queue: [txn | queue]}
-    {:noreply, new_state}
-  end
-
-  def handle_cast({:notify, txn}, %State{table: table} = state) do
-    do_handle_notification(table, txn)
     {:noreply, state}
+  end
+
+  def handle_call({:notify, txn}, _from, state) do
+    do_handle_notification(@table_name, txn)
+    {:reply, :ok, state}
   end
 
   @impl true

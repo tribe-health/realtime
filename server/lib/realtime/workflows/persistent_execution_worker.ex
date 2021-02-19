@@ -14,7 +14,7 @@ defmodule Realtime.Workflows.PersistentExecutionWorker do
     arguments = args["arguments"]
 
     workflow = Manager.workflow_by_id(workflow_id)
-    execution = Workflows.get_workflow_execution(execution_id)
+    {:ok, execution} = Workflows.get_workflow_execution(execution_id)
 
     Interpreter.start_execution(workflow, execution)
     :ok

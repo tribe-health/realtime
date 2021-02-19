@@ -40,6 +40,7 @@ defmodule StateMachine.Interpreter do
 
   def start_execution(workflow, execution, opts \\ []) do
     context = create_context(workflow, execution, opts)
+    Logger.debug("Start execution #{inspect context}")
     try do
       {:ok, temp_json_name} = Temp.path %{prefix: "states-language", suffix: ".json"}
       File.write(temp_json_name, Jason.encode!(context.state_machine))

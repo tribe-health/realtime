@@ -49,7 +49,7 @@ defmodule Realtime.Workflows.Manager do
   """
   def workflow_by_id(id) do
     case :ets.lookup(@table_name, id) do
-      [workflow] -> workflow
+      [{_, workflow}] -> workflow
       [] -> nil
     end
   end

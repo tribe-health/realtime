@@ -64,6 +64,14 @@ defmodule Realtime.Workflows do
     |> Repo.insert()
   end
 
+  @doc """
+  Returns the workflow execution with the given id.
+  """
+  def get_workflow_execution(id) do
+    Execution
+    |> get_or_not_found(id)
+  end
+
   ## Private
 
   defp get_or_not_found(queryable, id, opts \\ []) do

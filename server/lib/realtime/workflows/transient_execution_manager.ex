@@ -1,14 +1,13 @@
 defmodule Realtime.Workflows.TransientExecutionManager do
 
+  alias StateMachine.Interpreter
+  require Logger
+
   def start_workflow_execution(workflow, execution, opts \\ []) do
-    reply_to = Keyword.get(opts, :reply_to, nil)
     Task.Supervisor.start_child(
       __MODULE__,
       fn () ->
-        :timer.sleep(4_000)
-        if reply_to != nil do
-          send reply_to, {:ok, %{answer: 42}}
-        end
+        Interpreter.start_execution(workflow, execution, opts)
       end
     )
   end

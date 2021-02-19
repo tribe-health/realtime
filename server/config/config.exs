@@ -85,6 +85,9 @@ config :realtime, Oban,
   plugins: [Oban.Plugins.Pruner],
   queues: [workflow_interpreter: 10]
 
+config :realtime, StateMachine,
+  resources: [StateMachine.Resources.HttpEndpoint]
+
 # Configures Elixir's Logger
 config :logger, :console,
   format: "$date $time $metadata[$level] $message\n",

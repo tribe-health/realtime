@@ -44,7 +44,7 @@ defmodule StateMachine.Interpreter do
     try do
       {:ok, temp_json_name} = Temp.path %{prefix: "states-language", suffix: ".json"}
       File.write(temp_json_name, Jason.encode!(context.state_machine))
-      quoted_state_machine = states_language_machine(context.execution.id, temp_json_name, context.reply_to)
+      quoted_state_machine = states_language_machine(context.execution.id, temp_json_name, context.reply_to, context.resources)
 
       [{mod, _}] = Code.compile_quoted(quoted_state_machine)
       {:ok, pid} = mod.start_link(context.execution.arguments)
@@ -71,8 +71,9 @@ defmodule StateMachine.Interpreter do
     Application.fetch_env!(:realtime, StateMachine)
   end
 
-  defp states_language_machine(suffix, state_machine, reply_to) do
+  defp states_language_machine(suffix, state_machine, reply_to, resources) do
     state_machine = Macro.escape(state_machine)
+    resources = Macro.escape(resources)
     quote do
       defmodule unquote(:"StateMachine_#{suffix}") do
         use StatesLanguage, data: unquote(state_machine)
@@ -80,8 +81,17 @@ defmodule StateMachine.Interpreter do
         require Logger
 
         def handle_resource(resource, params, state_name, data) do
+          resources = unquote(resources)
           Logger.info("Resource #{inspect resource}, #{inspect params}")
-          {:ok, data, []}
+          case Enum.find(resources, fn r -> r.can_handle(resource) end) do
+            nil ->
+              Logger.error("Nothing can handle #{inspect resource}")
+              {:ok, data, []}
+            handler ->
+              {:ok, res} = handler.call(resource, params)
+              Logger.info("Result = #{inspect res}")
+              {:ok, data, []}
+          end
         end
 
         def handle_termination(reason, state_name, %StatesLanguage{data: data}) do

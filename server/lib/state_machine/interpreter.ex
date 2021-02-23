@@ -56,10 +56,16 @@ defmodule StateMachine.Interpreter do
           File.rm(temp_json_name)
       end
     rescue
-      err -> Logger.debug("Err: #{inspect err}")
+      err -> Logger.warn("Err: #{inspect err}")
     end
   end
 
+  def state_machine_valid?(definition) do
+    case StatesLanguage.validate(definition) do
+      {:ok, _} -> true
+      _ -> false
+    end
+  end
 
   defp interpreter_configuration() do
     Application.fetch_env!(:realtime, StateMachine)

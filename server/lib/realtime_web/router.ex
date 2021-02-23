@@ -24,7 +24,7 @@ defmodule RealtimeWeb.Router do
     pipe_through :api
 
     resources "/workflows", WorkflowController do
-      resources "/executions", ExecutionController, only: [:index, :create]
+      resources "/executions", ExecutionController, only: [:index, :create, :show, :delete]
     end
   end
 end

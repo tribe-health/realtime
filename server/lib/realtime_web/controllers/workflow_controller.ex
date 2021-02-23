@@ -8,24 +8,31 @@ defmodule RealtimeWeb.WorkflowController do
 
   def index(conn, _params) do
     workflows = Workflows.list_workflows()
-    Logger.debug("Returning workflows #{inspect workflows}")
-    render(conn, "index.json", workflows: workflows_json(workflows))
+    render(conn, "index.json", workflows: workflows)
   end
 
   def create(conn, params) do
     with {:ok, workflow} <- Workflows.create_workflow(params) do
       conn
       |> put_status(:created)
-      |> render("create.json", workflow: workflow_json(workflow))
+      |> render("show.json", workflow: workflow)
+    end
+  end
+
+  def show(conn, %{"id" => workflow_id}) do
+    with {:ok, workflow} <- Workflows.get_workflow(workflow_id) do
+      conn
+      |> put_status(:ok)
+      |> render("show.json", workflow: workflow)
     end
   end
 
   def update(conn, %{"id" => workflow_id} = params) do
     with {:ok, workflow} <- Workflows.get_workflow(workflow_id),
-         {:ok, _} <- Workflows.update_workflow(workflow, params) do
+         {:ok, updated_workflow} <- Workflows.update_workflow(workflow, params) do
       conn
       |> put_status(:ok)
-      |> render("update.json", workflow: workflow_json(workflow))
+      |> render("show.json", workflow: updated_workflow)
     end
   end
 
@@ -34,18 +41,7 @@ defmodule RealtimeWeb.WorkflowController do
          {:ok, _} <- Workflows.delete_workflow(workflow) do
       conn
       |> put_status(:ok)
-      |> render("delete.json", workflow: workflow_json(workflow))
+      |> render("show.json", workflow: workflow)
     end
-  end
-
-  defp workflows_json(workflows), do: workflows |> Enum.map(&workflow_json(&1))
-
-  defp workflow_json(workflow) do
-    %{
-      id: workflow.id,
-      name: workflow.name,
-      trigger: workflow.trigger,
-      definition: workflow.definition
-    }
   end
 end

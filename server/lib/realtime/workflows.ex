@@ -50,11 +50,34 @@ defmodule Realtime.Workflows do
     Repo.delete(workflow)
   end
 
+
+  @doc """
+  Invoke workflow with the given execution parameters.
+  """
   def invoke_workflow(workflow, attrs \\ %{}, opts \\ []) do
     with {:ok, execution} <- create_workflow_execution(workflow, attrs) do
       ExecutionManager.start_workflow_execution(workflow, execution, opts)
-      {:ok, execution}
     end
+  end
+
+  @doc """
+  Invoke workflow with the given execution parameters and wait for its completion.
+  """
+  def invoke_workflow_and_wait_for_reply(workflow, attrs \\ %{}) do
+    # Start and await a Task so the original self() can wait for other messages.
+    # In practice this is needed to test the ExecutionController.
+    task = Task.async(fn ->
+      with {:ok, execution} <- invoke_workflow(workflow, attrs, reply_to: self()) do
+        receive do
+          {:ok, msg} -> {:ok, msg, execution}
+          err -> {:error, err, execution}
+        after
+          5_000 -> {:timeout, execution}
+        end
+      end
+    end)
+
+    Task.await(task)
   end
 
   def create_workflow_execution(workflow, attrs \\ %{}) do
@@ -70,6 +93,30 @@ defmodule Realtime.Workflows do
   def get_workflow_execution(id) do
     Execution
     |> get_or_not_found(id)
+  end
+
+  @doc """
+  Returns a list of executions for the given workflow.
+  """
+  def list_workflow_executions(workflow_id) do
+    from(Execution, where: [workflow_id: ^workflow_id])
+    |> Repo.all()
+  end
+
+  @doc """
+  Deletes the given workflow execution.
+  """
+  def delete_workflow_execution(execution) do
+    Repo.delete(execution)
+  end
+
+  @doc """
+  Updates the given workflow execution.
+  """
+  def update_workflow_execution(execution, attrs \\ %{}) do
+    execution
+    |> Execution.changeset(attrs)
+    |> Repo.update()
   end
 
   ## Private

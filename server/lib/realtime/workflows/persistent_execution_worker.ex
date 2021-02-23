@@ -11,7 +11,6 @@ defmodule Realtime.Workflows.PersistentExecutionWorker do
   def perform(%Oban.Job{args: args}) do
     workflow_id = args["workflow_id"]
     execution_id = args["execution_id"]
-    arguments = args["arguments"]
 
     workflow = Manager.workflow_by_id(workflow_id)
     {:ok, execution} = Workflows.get_workflow_execution(execution_id)

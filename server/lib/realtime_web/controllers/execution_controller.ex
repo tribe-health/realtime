@@ -7,28 +7,57 @@ defmodule RealtimeWeb.ExecutionController do
   action_fallback RealtimeWeb.ErrorController
 
   def index(conn, %{"workflow_id" => workflow_id}) do
-    json(conn, [])
+    executions = Workflows.list_workflow_executions(workflow_id)
+    render(conn, "index.json", executions: executions)
   end
 
-  def create(conn, %{"workflow_id" => workflow_id, "arguments" => arguments}) do
-    args = %{
+  def create(conn, %{"workflow_id" => workflow_id, "arguments" => arguments} = params) do
+    log_type = Map.get(params, "log_type", nil)
+    start_state = Map.get(params, "start_state", nil)
+
+    attrs = %{
       arguments: arguments,
-      is_persistent: false,
-      has_logs: false,
+      start_state: start_state,
+      log_type: log_type
     }
-    with {:ok, workflow} <- Workflows.get_workflow(workflow_id),
-         {:ok, execution} <- Workflows.invoke_workflow(workflow, args, reply_to: self()) do
-      receive do
-        {:ok, response} ->
-          json(conn, %{response: response})
-        _ ->
-          json(conn, %{message: "error"})
-      after
-        5_000 ->
-          json(conn, %{message: "timeout"})
+
+    with {:ok, workflow} <- Workflows.get_workflow(workflow_id) do
+      case Workflows.invoke_workflow_and_wait_for_reply(workflow, attrs) do
+        {:ok, response, execution} ->
+          conn
+          |> put_status(:created)
+          |> render("result.json", execution: execution, result: response)
+        {:timeout, execution} ->
+          conn
+          |> put_status(:bad_request)
+          |> render("error.json", execution: execution, error: "timeout")
+        {:error, err, execution} ->
+          # Error during execution
+          Logger.warn("ExecutionController.create: fail #{inspect err}")
+          conn
+          |> put_status(:bad_request)
+          |> render("error.json", execution: execution, error: "execution error")
+        {:error, changeset} ->
+          # Changeset error, delegate to error controller
+          RealtimeWeb.ErrorController.call(conn, {:error, changeset})
       end
     end
   end
 
-  ## Private
+  def show(conn, %{"id" => execution_id}) do
+    with {:ok, execution} <- Workflows.get_workflow_execution(execution_id) do
+      conn
+      |> put_status(:ok)
+      |> render("show.json", execution: execution, result: nil)
+    end
+  end
+
+  def delete(conn, %{"id" => execution_id}) do
+    with {:ok, execution} <- Workflows.get_workflow_execution(execution_id),
+         {:ok, _} <- Workflows.delete_workflow_execution(execution) do
+      conn
+      |> put_status(:ok)
+      |> render("show.json", execution: execution)
+    end
+  end
 end

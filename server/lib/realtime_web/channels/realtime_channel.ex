@@ -1,163 +1,114 @@
 defmodule RealtimeWeb.RealtimeChannel do
   use RealtimeWeb, :channel
-  require Logger, warn: false
+  require Logger
 
-  alias Phoenix.{PubSub, Socket}
+  alias RealtimeWeb.{Endpoint, Presence}
   alias Phoenix.Socket.Broadcast
-  alias Realtime.SubscriptionManager
-  alias Realtime.Metrics.SocketMonitor
-  alias RealtimeWeb.{ChannelsAuthorization, Endpoint}
 
-  @verify_token_interval 60_000
-
-  def join("realtime:", _, _socket) do
-    {:error, %{reason: "realtime subtopic does not exist"}}
-  end
-
+  @impl true
   def join(
-        "realtime:" <> subtopic = topic,
-        params,
-        %Socket{channel_pid: channel_pid, assigns: %{access_token: access_token}} = socket
+        "realtime:" <> sub_topic = topic,
+        _,
+        %{assigns: %{tenant: tenant, claims: claims, limits: limits}, transport_pid: pid} = socket
       ) do
-    token =
-      case params do
-        %{"user_token" => token} -> token
-        _ -> access_token
-      end
+    if Realtime.UsersCounter.tenant_users(tenant) < limits.max_concurrent_users do
+      Realtime.UsersCounter.add(pid, tenant)
+      # used for custom monitoring
+      channel_stats(pid, tenant, topic)
 
-    with {:ok, claims} <- ChannelsAuthorization.authorize(token),
-         bin_id <- Ecto.UUID.bingenerate(),
-         :ok <-
-           SubscriptionManager.track_topic_subscriber(%{
-             id: bin_id,
-             channel_pid: channel_pid,
-             claims: claims,
-             topic: subtopic
-           }),
-         :ok <- PubSub.subscribe(Realtime.PubSub, "subscription_manager") do
-      SocketMonitor.track_channel(socket)
+      tenant_topic = tenant <> ":" <> sub_topic
+      :ok = tenant_topic(socket, tenant_topic)
+
+      id = UUID.uuid1()
+      Extensions.Postgres.subscribe(tenant, id, sub_topic, claims, pid)
+      Logger.debug("Start channel, #{inspect([id: id], pretty: true)}")
+
       send(self(), :after_join)
-      ref = Process.send_after(self(), :verify_access_token, @verify_token_interval)
-
-      {:ok, assign(socket, %{id: bin_id, access_token: token, verify_ref: ref})}
+      {:ok, assign(socket, %{id: id, tenant_topic: tenant_topic})}
     else
-      _ -> {:error, %{reason: "error occurred when joining #{topic} with user token"}}
+      Logger.error("Reached max_concurrent_users limit")
+      {:error, %{reason: "reached max_concurrent_users limit"}}
     end
   end
 
-  def join(_, _, socket) do
-    SocketMonitor.track_channel(socket)
-    {:ok, socket}
-  end
-
-  def handle_info(
-        :after_join,
-        %Socket{
-          assigns: %{id: id, access_token: access_token},
-          serializer: serializer,
-          topic: topic,
-          transport_pid: transport_pid
-        } = socket
-      ) do
-    with {:ok, _} <- ChannelsAuthorization.authorize(access_token),
-         :ok <- Endpoint.unsubscribe(topic),
-         :ok <-
-           Endpoint.subscribe(topic,
-             metadata: {:subscriber_fastlane, transport_pid, serializer, id}
-           ) do
-      {:noreply, socket}
-    else
-      error -> {:stop, error, socket}
-    end
-  end
-
-  def handle_info(
-        %Broadcast{
-          event: "sync_subscription",
-          topic: "subscription_manager"
-        },
-        %Socket{
-          assigns: %{id: id, access_token: access_token},
-          channel_pid: channel_pid,
-          topic: "realtime:" <> subtopic
-        } = socket
-      ) do
-    with {:ok, claims} <- ChannelsAuthorization.authorize(access_token),
-         :ok <-
-           SubscriptionManager.track_topic_subscriber(%{
-             id: id,
-             channel_pid: channel_pid,
-             claims: claims,
-             topic: subtopic
-           }) do
-      {:noreply, socket}
-    else
-      _ -> {:stop, :sync_subscription_error, socket}
-    end
-  end
-
-  def handle_info(
-        %Broadcast{
-          event: "sync_subscription",
-          topic: "subscription_manager"
-        },
-        socket
-      ) do
+  @impl true
+  def handle_info(:after_join, %{assigns: %{tenant_topic: topic}} = socket) do
+    push(socket, "presence_state", Presence.list(topic))
     {:noreply, socket}
   end
 
-  def handle_info(
-        :verify_access_token,
-        %Socket{
-          assigns: %{access_token: access_token, verify_ref: ref}
-        } = socket
-      ) do
-    Process.cancel_timer(ref)
+  def handle_info(%Broadcast{event: type, payload: payload}, socket) do
+    push(socket, type, payload)
+    {:noreply, socket}
+  end
 
-    case ChannelsAuthorization.authorize(access_token) do
-      {:ok, _} ->
-        ref = Process.send_after(self(), :verify_access_token, @verify_token_interval)
-        {:noreply, assign(socket, :verify_ref, ref)}
+  def handle_info(other, socket) do
+    Logger.error("Undefined msg #{inspect(other, pretty: true)}")
+    {:noreply, socket}
+  end
 
-      _ ->
-        {:stop, :invalid_access_token, socket}
-    end
+  @impl true
+  # TODO: implement
+  def handle_in("access_token", _, socket) do
+    {:noreply, socket}
+  end
+
+  def handle_in("broadcast" = type, payload, %{assigns: %{tenant_topic: topic}} = socket) do
+    Endpoint.broadcast_from(self(), topic, type, payload)
+    {:noreply, socket}
   end
 
   def handle_in(
-        "access_token",
-        %{"access_token" => fresh_token},
-        %Socket{
-          assigns: %{id: id, access_token: access_token},
-          channel_pid: channel_pid,
-          topic: "realtime:" <> subtopic
-        } = socket
-      )
-      when is_binary(fresh_token) do
-    case ChannelsAuthorization.authorize(fresh_token) do
-      {:ok, fresh_claims} ->
-        new_socket =
-          if fresh_token != access_token do
-            SubscriptionManager.track_topic_subscriber(%{
-              id: id,
-              channel_pid: channel_pid,
-              claims: fresh_claims,
-              topic: subtopic
-            })
+        "presence",
+        %{"event" => "TRACK", "payload" => payload} = msg,
+        %{assigns: %{id: id, tenant_topic: topic}} = socket
+      ) do
+    case Presence.track(self(), topic, Map.get(msg, "key", id), payload) do
+      {:ok, _} ->
+        :ok
 
-            assign(socket, :access_token, fresh_token)
-          else
-            socket
-          end
-
-        {:noreply, new_socket}
-
-      _ ->
-        {:stop, :invalid_access_token, socket}
+      {:error, {:already_tracked, _, _, _}} ->
+        Presence.update(self(), topic, Map.get(msg, "key", id), payload)
     end
+
+    {:reply, :ok, socket}
   end
 
-  def handle_in("access_token", _, socket) do
-    {:noreply, socket}
+  def handle_in(
+        "presence",
+        %{"event" => "UNTRACK"} = msg,
+        %{assigns: %{id: id, tenant_topic: topic}} = socket
+      ) do
+    Presence.untrack(self(), topic, Map.get(msg, "key", id))
+
+    {:reply, :ok, socket}
+  end
+
+  @impl true
+  def terminate(reason, _state) do
+    Logger.debug(%{terminate: reason})
+    :telemetry.execute([:prom_ex, :plugin, :realtime, :disconnected], %{})
+    :ok
+  end
+
+  defp tenant_topic(_socket, topic) do
+    # Allow sending directly to the transport
+    # fastlane = {:fastlane, socket.transport_pid, socket.serializer, ["presence_diff"]}
+    # RealtimeWeb.Endpoint.subscribe(topic, metadata: fastlane)
+    RealtimeWeb.Endpoint.subscribe(topic)
+  end
+
+  def channel_stats(pid, tenant, topic) do
+    Registry.register(
+      Realtime.Registry,
+      "topics",
+      {tenant, topic, System.system_time(:second)}
+    )
+
+    Registry.register(
+      Realtime.Registry.Unique,
+      "sessions",
+      {pid, System.system_time(:second)}
+    )
   end
 end

@@ -1,11 +1,22 @@
 defmodule RealtimeWeb.Endpoint do
   use Phoenix.Endpoint, otp_app: :realtime
 
+  # The session will be stored in the cookie and signed,
+  # this means its contents can be read but not tampered with.
+  # Set :encryption_salt if you would also like to encrypt it.
+  @session_options [
+    store: :cookie,
+    key: "_realtime_key",
+    signing_salt: "5OUq5X4H"
+  ]
+
   socket "/socket", RealtimeWeb.UserSocket,
     websocket: [
-      connect_info: [:x_headers]
+      connect_info: [:peer_data, :uri, :x_headers]
     ],
     longpoll: false
+
+  socket "/live", Phoenix.LiveView.Socket, websocket: [connect_info: [session: @session_options]]
 
   # Serve at "/" the static files from "priv/static" directory.
   #
@@ -17,6 +28,8 @@ defmodule RealtimeWeb.Endpoint do
     gzip: false,
     only: ~w(css fonts images js favicon.ico robots.txt)
 
+  plug PromEx.Plug, path: "/metrics", prom_ex_module: Realtime.PromEx
+
   # Code reloading can be explicitly enabled under the
   # :code_reloader configuration of your endpoint.
   if code_reloading? do
@@ -25,9 +38,9 @@ defmodule RealtimeWeb.Endpoint do
     plug Phoenix.CodeReloader
   end
 
-  if Application.fetch_env!(:realtime, :expose_metrics) do
-    plug PromEx.Plug, prom_ex_module: Realtime.Metrics.PromEx
-  end
+  plug Phoenix.LiveDashboard.RequestLogger,
+    param_key: "request_logger",
+    cookie_key: "request_logger"
 
   plug Plug.RequestId
   plug Plug.Telemetry, event_prefix: [:phoenix, :endpoint]
@@ -39,14 +52,6 @@ defmodule RealtimeWeb.Endpoint do
 
   plug Plug.MethodOverride
   plug Plug.Head
-
-  # The session will be stored in the cookie and signed,
-  # this means its contents can be read but not tampered with.
-  # Set :encryption_salt if you would also like to encrypt it.
-  plug Plug.Session,
-    store: :cookie,
-    key: "_realtime_key",
-    signing_salt: "XJOJwjLt"
-
+  plug Plug.Session, @session_options
   plug RealtimeWeb.Router
 end

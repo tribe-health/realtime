@@ -9,16 +9,38 @@ import Config
 
 # Channels are not secured by default in development and
 # are secured by default in production.
-secure_channels = System.get_env("SECURE_CHANNELS", "false") == "true"
+presence = System.get_env("PRESENCE", "false") == "false"
 
 config :realtime,
-  secure_channels: secure_channels
+  presence: presence
 
 config :realtime, RealtimeWeb.Endpoint,
+  http: [port: 4000],
   debug_errors: true,
   code_reloader: true,
-  check_origin: false,
-  watchers: []
+  check_origin: false
+
+# watchers: [
+#   node: [
+#     "node_modules/webpack/bin/webpack.js",
+#     "--mode",
+#     "development",
+#     "--watch-stdin",
+#     cd: Path.expand("../assets", __DIR__)
+#   ]
+# ]
+
+config :realtime, Realtime.PromEx,
+  manual_metrics_start_delay: :no_delay,
+  drop_metrics_groups: [],
+  grafana: :disabled,
+  metrics_server: [
+    port: 4021,
+    path: "/metrics",
+    protocol: :http,
+    pool_size: 5,
+    cowboy_opts: []
+  ]
 
 # ## SSL Support
 #
@@ -50,13 +72,15 @@ config :realtime, RealtimeWeb.Endpoint,
     patterns: [
       ~r"priv/static/.*(js|css|png|jpeg|jpg|gif|svg)$",
       ~r"priv/gettext/.*(po)$",
-      ~r"lib/realtime_web/{live,views}/.*(ex)$",
+      ~r"lib/realtime_web/(live|views)/.*(ex)$",
       ~r"lib/realtime_web/templates/.*(eex)$"
     ]
   ]
 
 # Do not include metadata nor timestamps in development logs
-config :logger, :console, format: "[$level] $message\n"
+config :logger, :console,
+  format: "$time [$level] $message $metadata\n",
+  metadata: [:error_code, :file, :pid]
 
 # Set a higher stacktrace during development. Avoid configuring such
 # in production as building large stacktraces may be expensive.

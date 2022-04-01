@@ -1,69 +1,73 @@
 defmodule RealtimeWeb.UserSocket do
   use Phoenix.Socket
-
+  require Logger
   alias RealtimeWeb.ChannelsAuthorization
 
-  defoverridable init: 1
-
-  def init(state) do
-    res = {:ok, {_, socket}} = super(state)
-    Realtime.Metrics.SocketMonitor.track_socket(socket)
-    res
-  end
-
   ## Channels
+  channel "room:*", RealtimeWeb.RoomChannel
   channel "realtime:*", RealtimeWeb.RealtimeChannel
 
-  # Socket params are passed from the client and can
-  # be used to verify and authenticate a user. After
-  # verification, you can put default assigns into
-  # the socket that will be set for all channels, ie
-  #
-  #     {:ok, assign(socket, :user_id, verified_user_id)}
-  #
-  # To deny connection, return `:error`.
-  #
-  # See `Phoenix.Token` documentation for examples in
-  # performing token verification on connect.
-  def connect(params, socket, %{x_headers: headers}) do
+  @impl true
+  def connect(params, socket, connect_info) do
     if Application.fetch_env!(:realtime, :secure_channels) do
-      token = access_token(headers, params)
+      %{uri: %{host: host}, x_headers: headers} = connect_info
+      [external_id | _] = String.split(host, ".", parts: 2)
 
-      case ChannelsAuthorization.authorize(token) do
-        {:ok, _} -> {:ok, assign(socket, :access_token, token)}
-        _ -> :error
+      with tenant when tenant != nil <- Realtime.Api.get_tenant_by_external_id(external_id),
+           token when token != nil <- access_token(params, headers),
+           {:ok, claims} <- authorize_conn(token, tenant.jwt_secret) do
+        assigns = %{
+          tenant: external_id,
+          claims: claims,
+          limits: %{max_concurrent_users: tenant.max_concurrent_users},
+          params: %{
+            ref: make_ref()
+          }
+        }
+
+        params = filter_postgres_settings(tenant.extensions)
+        Extensions.Postgres.start_distributed(external_id, params)
+
+        {:ok, assign(socket, assigns)}
+      else
+        _ ->
+          Logger.error("Auth error")
+          :error
       end
-    else
-      {:ok, socket}
     end
   end
 
-  @spec access_token([{String.t(), String.t()}], map) :: String.t() | nil
-  def access_token(headers, params) do
-    case :proplists.get_value("x-api-key", headers, nil) do
-      nil ->
-        # WARNING: "token" and "apikey" param keys will be deprecated.
-        # Please use "x-api-key" header param key to pass in auth token.
-        case params do
-          %{"apikey" => token} -> token
-          %{"token" => token} -> token
-          _ -> nil
-        end
-
-      token ->
-        token
+  def access_token(params, headers) do
+    case :proplists.lookup("x-api-key", headers) do
+      :none -> Map.get(params, "apikey")
+      {"x-api-key", token} -> token
     end
   end
 
-  # Socket id's are topics that allow you to identify all sockets for a given user:
-  #
-  #     def id(socket), do: "user_socket:#{socket.assigns.user_id}"
-  #
-  # Would allow you to broadcast a "disconnect" event and terminate
-  # all active sockets and channels for a given user:
-  #
-  #     RealtimeWeb.Endpoint.broadcast("user_socket:#{user.id}", "disconnect", %{})
-  #
-  # Returning `nil` makes this socket anonymous.
+  @impl true
   def id(_socket), do: nil
+
+  defp authorize_conn(token, secret) do
+    case ChannelsAuthorization.authorize(token, secret) do
+      # TODO: check necessary fields
+      {:ok, %{"role" => _} = claims} ->
+        {:ok, claims}
+
+      _ ->
+        :error
+    end
+  end
+
+  defp filter_postgres_settings(extensions) do
+    [postgres] =
+      Enum.filter(extensions, fn e ->
+        if e.type == "postgres" do
+          true
+        else
+          false
+        end
+      end)
+
+    postgres.settings
+  end
 end
